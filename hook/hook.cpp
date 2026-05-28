@@ -12,6 +12,8 @@ decltype(&send) pOriginSend = nullptr;
 decltype(&recv) pOriginRecv = nullptr;
 SendCallBack pSendCallBack = nullptr;
 RecvCallBack pRecvCallBack = nullptr;
+HANDLE hActCtx = INVALID_HANDLE_VALUE;
+ULONG_PTR pActCtxCookie = 0;
 
 void InitLog()
 {
@@ -62,16 +64,63 @@ void SetRecvCallBack(RecvCallBack pCallBack) {
 	pRecvCallBack = pCallBack;
 }
 
+wstring GetCurrentDllDirectory(HMODULE hModule) {
+	wchar_t szPath[MAX_PATH];
+	if (GetModuleFileNameW(hModule, szPath, MAX_PATH)) {
+		wstring dllPath(szPath);
+		size_t pos = dllPath.find_last_of(L"\\/");
+		if (pos != wstring::npos) {
+			return dllPath.substr(0, pos);
+		}
+	}
+	return L"";
+}
+
+void LoadFlash() {
+	HMODULE hModule = NULL;
+
+	GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+	                   (LPCWSTR)&LoadFlash, &hModule);
+	if (hModule == NULL) { return; }
+
+	wstring baseDir = GetCurrentDllDirectory(hModule);
+	if (baseDir.empty()) { return; }
+
+	wstring manifest = baseDir + L"\\manifest";
+
+	ACTCTXW actctx = { 0 };
+	actctx.cbSize = sizeof(ACTCTXW);
+	actctx.dwFlags = ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID;
+	actctx.lpSource = manifest.c_str();
+	actctx.lpAssemblyDirectory = baseDir.c_str();
+
+	hActCtx = CreateActCtxW(&actctx);
+	if (hActCtx != INVALID_HANDLE_VALUE && hActCtx != NULL)
+	{
+		if (ActivateActCtx(hActCtx, &pActCtxCookie))
+		{
+			Log("加载 Flash 成功");
+		}
+	}
+}
+
+void UnloadFlash() {
+	if (hActCtx != INVALID_HANDLE_VALUE && hActCtx != NULL) {
+		DeactivateActCtx(0, pActCtxCookie);
+		ReleaseActCtx(hActCtx);
+	}
+}
+
 void EnableHook()
 {
 	InitLog();
 	MH_STATUS status = MH_Initialize();
 	if (status != MH_OK)
 	{
-		Log("MinHook 初始化失败");
+		Log("初始化 MinHook 失败");
 		return;
 	}
-	Log("MinHook 初始化成功");
+	Log("初始化 MinHook 成功");
 
 	status = MH_CreateHookApi(L"ws2_32.dll", "send", reinterpret_cast<LPVOID>(MySend), reinterpret_cast<LPVOID*>(&pOriginSend));
 	if (status != MH_OK)
@@ -100,4 +149,5 @@ void DisableHook()
 {
 	MH_DisableHook(MH_ALL_HOOKS);
 	MH_Uninitialize();
+	UnloadFlash();
 }

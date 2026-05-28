@@ -12,3 +12,4 @@ typedef void (*RecvCallBack)(SOCKET, PCHAR, INT);
 EXPORT void SetSendCallBack(SendCallBack);
 EXPORT void SetRecvCallBack(RecvCallBack);
 EXPORT int WINAPI Send(SOCKET, PCHAR, INT);
+EXPORT void LoadFlash();
