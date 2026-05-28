@@ -15,14 +15,14 @@ RecvCallBack pRecvCallBack = nullptr;
 
 void InitLog()
 {
-#ifdef DEBUG
+#ifdef _DEBUG
 	ofstream logFile("hook.log", ios::out);
 #endif
 }
 
 void Log(const string& msg)
 {
-#ifdef DEBUG
+#ifdef _DEBUG
 	ofstream logFile("hook.log", ios::app);
 	if (logFile.is_open())
 	{
