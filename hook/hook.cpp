@@ -121,7 +121,7 @@ void CompleteRegistry()
 			wstring registryOcxPath(existingValue);
 
 			if (PathFileExistsW(registryOcxPath.c_str())) {
-				Log("系统存在 Flash，跳过补全注册表");
+				Log("系统存在 Flash，跳过注册表补全");
 				return;
 			}
 		}
