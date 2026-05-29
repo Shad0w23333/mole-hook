@@ -36,6 +36,21 @@ void Log(const string& msg)
 #endif
 }
 
+void Log(const wstring& msg)
+{
+#ifdef _DEBUG
+	wofstream logFile("hook.log", ios::app);
+	if (logFile.is_open())
+	{
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		logFile.imbue(locale(""));
+		logFile << "[" << st.wHour << ":" << st.wMinute << ":" << st.wSecond << "] " << msg << endl;
+		logFile.close();
+	}
+#endif
+}
+
 int WINAPI MySend(SOCKET s, PCHAR buf, int len, int flags)
 {
 	return pSendCallBack(s, buf, len);
@@ -118,31 +133,29 @@ void EnableHook()
 	if (status != MH_OK)
 	{
 		Log("初始化 MinHook 失败");
-		return;
 	}
 	Log("初始化 MinHook 成功");
 
 	status = MH_CreateHookApi(L"ws2_32.dll", "send", reinterpret_cast<LPVOID>(MySend), reinterpret_cast<LPVOID*>(&pOriginSend));
 	if (status != MH_OK)
 	{
-		Log("创建 send Hook 失败");
+		Log("创建 Send Hook 失败");
 	}
+	Log("创建 Send Hook 成功");
 
 	status = MH_CreateHookApi(L"ws2_32.dll", "recv", reinterpret_cast<LPVOID>(MyRecv), reinterpret_cast<LPVOID*>(&pOriginRecv));
 	if (status != MH_OK)
 	{
-		Log("创建 recv Hook 失败");
+		Log("创建 Recv Hook 失败");
 	}
+	Log("创建 Recv Hook 成功");
 
 	status = MH_EnableHook(MH_ALL_HOOKS);
 	if (status != MH_OK)
 	{
 		Log("开启 Hook 失败");
 	}
-	else
-	{
-		Log("开启 Hook 成功");
-	}
+	Log("开启 Hook 成功");
 }
 
 void DisableHook()
