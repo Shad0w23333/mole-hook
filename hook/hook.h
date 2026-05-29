@@ -1,11 +1,11 @@
-#include <WinSock2.h>
+ï»¿#include <WinSock2.h>
 #define EXPORT extern "C" __declspec(dllexport)
 
-// º¯ÊýÉùÃ÷
+// å‡½æ•°å£°æ˜Ž
 void EnableHook();
 void DisableHook();
 
-// »Øµ÷º¯ÊýÖ¸Õë
+// å›žè°ƒå‡½æ•°æŒ‡é’ˆ
 typedef int (*SendCallBack)(SOCKET, PCHAR, INT);
 typedef void (*RecvCallBack)(SOCKET, PCHAR, INT);
 
