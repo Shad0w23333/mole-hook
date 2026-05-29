@@ -1,11 +1,14 @@
-#include "pch.h"
+Ôªø#include "pch.h"
 #include "MinHook.h"
 #include "WinSock2.h"
 #include "hook.h"
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <shellapi.h>
+#include <shlwapi.h>  
 #pragma comment(lib, "libMinHook.x64.lib")
+#pragma comment(lib, "shlwapi.lib")
 using namespace std;
 
 decltype(&send) pOriginSend = nullptr;
@@ -14,8 +17,9 @@ SendCallBack pSendCallBack = nullptr;
 RecvCallBack pRecvCallBack = nullptr;
 HANDLE hActCtx = INVALID_HANDLE_VALUE;
 ULONG_PTR pActCtxCookie = 0;
+wstring baseDir;
 
-void InitLog()
+void ClearLog()
 {
 #ifdef _DEBUG
 	ofstream logFile("hook.log", ios::out);
@@ -30,7 +34,7 @@ void Log(const string& msg)
 	{
 		SYSTEMTIME st;
 		GetLocalTime(&st);
-		logFile << "[" << st.wHour << ":" << st.wMinute << ":" << st.wSecond << "] " << msg << endl;
+		logFile << format("[{}-{}-{} {:02}:{:02}:{:02}] {}\n", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, msg);
 		logFile.close();
 	}
 #endif
@@ -45,10 +49,29 @@ void Log(const wstring& msg)
 		SYSTEMTIME st;
 		GetLocalTime(&st);
 		logFile.imbue(locale(""));
-		logFile << "[" << st.wHour << ":" << st.wMinute << ":" << st.wSecond << "] " << msg << endl;
+		logFile << format(L"[{}-{}-{} {:02}:{:02}:{:02}] {}\n", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, msg);
 		logFile.close();
 	}
 #endif
+}
+
+wstring GetBaseDir() {
+	if (baseDir.empty())
+	{
+		HMODULE hModule;
+		wchar_t szPath[MAX_PATH];
+		GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCWSTR>(&GetBaseDir), &hModule);
+		if (GetModuleFileNameW(hModule, szPath, MAX_PATH))
+		{
+			wstring dllPath(szPath);
+			size_t pos = dllPath.find_last_of(L"\\/");
+			if (pos != wstring::npos)
+			{
+				baseDir = dllPath.substr(0, pos);
+			}
+		}
+	}
+	return baseDir;
 }
 
 int WINAPI MySend(SOCKET s, PCHAR buf, int len, int flags)
@@ -79,30 +102,64 @@ void SetRecvCallBack(RecvCallBack pCallBack) {
 	pRecvCallBack = pCallBack;
 }
 
-wstring GetCurrentDllDirectory(HMODULE hModule) {
-	wchar_t szPath[MAX_PATH];
-	if (GetModuleFileNameW(hModule, szPath, MAX_PATH)) {
-		wstring dllPath(szPath);
-		size_t pos = dllPath.find_last_of(L"\\/");
-		if (pos != wstring::npos) {
-			return dllPath.substr(0, pos);
+void CompleteRegistry()
+{
+	wstring subKey = L"SOFTWARE\\Classes\\TypeLib\\{D27CDB6B-AE6D-11CF-96B8-444553540000}\\1.0\\0\\win64";
+	wstring flash = GetBaseDir() + L"\\Flash.ocx";
+
+	HKEY hCheckKey = nullptr;
+	LONG readRes = RegOpenKeyExW(HKEY_LOCAL_MACHINE, subKey.c_str(), 0, KEY_READ, &hCheckKey);
+
+	if (readRes == ERROR_SUCCESS && hCheckKey != nullptr) {
+		wchar_t existingValue[MAX_PATH] = { 0 };
+		DWORD valueSize = sizeof(existingValue);
+
+		LONG queryRes = RegQueryValueExW(hCheckKey, nullptr, nullptr, nullptr, reinterpret_cast<LPBYTE>(existingValue), &valueSize);
+		RegCloseKey(hCheckKey);
+
+		if (queryRes == ERROR_SUCCESS) {
+			wstring registryOcxPath(existingValue);
+
+			if (PathFileExistsW(registryOcxPath.c_str())) {
+				Log("Á≥ªÁªüÂ≠òÂú® FlashÔºåË∑≥ËøáË°•ÂÖ®Ê≥®ÂÜåË°®");
+				return;
+			}
 		}
 	}
-	return L"";
+
+	HKEY hWriteKey = nullptr;
+	LONG writeRes = RegCreateKeyExW(HKEY_LOCAL_MACHINE, subKey.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_SET_VALUE, nullptr, &hWriteKey, nullptr);
+
+	if (writeRes == ERROR_SUCCESS && hWriteKey != nullptr) {
+		DWORD dataSize = (flash.length() + 1) * sizeof(wchar_t);
+		RegSetValueExW(hWriteKey, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(flash.c_str()), dataSize);
+		RegCloseKey(hWriteKey);
+		Log("Ë°•ÂÖ® Flash Ê≥®ÂÜåË°®ÊàêÂäü");
+		return;
+	}
+
+	if (writeRes == ERROR_ACCESS_DENIED) {
+		Log("ÊùÉÈôê‰∏çË∂≥ÔºåËØ∑Ê±ÇÊèêÊùÉ");
+
+		wchar_t exePath[MAX_PATH] = { 0 };
+		GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+
+		LPWSTR lpCmdLine = GetCommandLineW();
+
+		HINSTANCE hRes = ShellExecuteW(nullptr, L"runas", exePath, lpCmdLine, nullptr, SW_SHOWNORMAL);
+		if (reinterpret_cast<ULONG_PTR>(hRes) > 32)
+		{
+			Log("ÊèêÊùÉÊàêÂäü");
+			ExitProcess(0);
+		}
+		Log("ÊèêÊùÉÂ§±Ë¥•");
+	}
 }
 
 void LoadFlash() {
-	HMODULE hModule = NULL;
+	CompleteRegistry();
 
-	GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-	                   (LPCWSTR)&LoadFlash, &hModule);
-	if (hModule == NULL) { return; }
-
-	wstring baseDir = GetCurrentDllDirectory(hModule);
-	if (baseDir.empty()) { return; }
-
-	wstring manifest = baseDir + L"\\manifest";
-
+	wstring manifest = GetBaseDir() + L"\\manifest";
 	ACTCTXW actctx = { 0 };
 	actctx.cbSize = sizeof(ACTCTXW);
 	actctx.dwFlags = ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID;
@@ -110,17 +167,17 @@ void LoadFlash() {
 	actctx.lpAssemblyDirectory = baseDir.c_str();
 
 	hActCtx = CreateActCtxW(&actctx);
-	if (hActCtx != INVALID_HANDLE_VALUE && hActCtx != NULL)
+	if (hActCtx != INVALID_HANDLE_VALUE && hActCtx != nullptr)
 	{
 		if (ActivateActCtx(hActCtx, &pActCtxCookie))
 		{
-			Log("º”‘ÿ Flash ≥…π¶");
+			Log("Âä†ËΩΩ Flash ÊàêÂäü");
 		}
 	}
 }
 
 void UnloadFlash() {
-	if (hActCtx != INVALID_HANDLE_VALUE && hActCtx != NULL) {
+	if (hActCtx != INVALID_HANDLE_VALUE && hActCtx != nullptr) {
 		DeactivateActCtx(0, pActCtxCookie);
 		ReleaseActCtx(hActCtx);
 	}
@@ -128,34 +185,34 @@ void UnloadFlash() {
 
 void EnableHook()
 {
-	InitLog();
+	ClearLog();
 	MH_STATUS status = MH_Initialize();
 	if (status != MH_OK)
 	{
-		Log("≥ı ºªØ MinHook  ß∞‹");
+		Log("ÂàùÂßãÂåñ MinHook Â§±Ë¥•");
 	}
-	Log("≥ı ºªØ MinHook ≥…π¶");
+	Log("ÂàùÂßãÂåñ MinHook ÊàêÂäü");
 
 	status = MH_CreateHookApi(L"ws2_32.dll", "send", reinterpret_cast<LPVOID>(MySend), reinterpret_cast<LPVOID*>(&pOriginSend));
 	if (status != MH_OK)
 	{
-		Log("¥¥Ω® Send Hook  ß∞‹");
+		Log("ÂàõÂª∫ Send Hook Â§±Ë¥•");
 	}
-	Log("¥¥Ω® Send Hook ≥…π¶");
+	Log("ÂàõÂª∫ Send Hook ÊàêÂäü");
 
 	status = MH_CreateHookApi(L"ws2_32.dll", "recv", reinterpret_cast<LPVOID>(MyRecv), reinterpret_cast<LPVOID*>(&pOriginRecv));
 	if (status != MH_OK)
 	{
-		Log("¥¥Ω® Recv Hook  ß∞‹");
+		Log("ÂàõÂª∫ Recv Hook Â§±Ë¥•");
 	}
-	Log("¥¥Ω® Recv Hook ≥…π¶");
+	Log("ÂàõÂª∫ Recv Hook ÊàêÂäü");
 
 	status = MH_EnableHook(MH_ALL_HOOKS);
 	if (status != MH_OK)
 	{
-		Log("ø™∆Ù Hook  ß∞‹");
+		Log("ÂºÄÂêØ Hook Â§±Ë¥•");
 	}
-	Log("ø™∆Ù Hook ≥…π¶");
+	Log("ÂºÄÂêØ Hook ÊàêÂäü");
 }
 
 void DisableHook()
