@@ -92,7 +92,7 @@ std::wstring GetLogFile()
 
 bool IsAdmin()
 {
-	bool fRet = false;
+	bool res = false;
 	HANDLE hToken = NULL;
 	if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
 	{
@@ -100,20 +100,14 @@ bool IsAdmin()
 		DWORD cbSize = sizeof(TOKEN_ELEVATION);
 		if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &cbSize))
 		{
-			fRet = elevation.TokenIsElevated;
+			res = elevation.TokenIsElevated;
 		}
 	}
 	if (hToken) CloseHandle(hToken);
-	return fRet;
-}
+	return res;
+} 
 
-inline void InitializeObjectAttributes(
-	POBJECT_ATTRIBUTES p,
-	PUNICODE_STRING n,
-	ULONG a = 0,
-	HANDLE r = nullptr,
-	PVOID s = nullptr
-)
+inline void InitAttribute(POBJECT_ATTRIBUTES p, PUNICODE_STRING n, ULONG a = 0, HANDLE r = nullptr, PVOID s = nullptr)
 {
 	p->Length = sizeof(OBJECT_ATTRIBUTES);
 	p->RootDirectory = r;
@@ -194,7 +188,7 @@ bool KernelModifyRegistry(const std::wstring& subKey, const std::wstring& flash)
 	usKeyPath.MaximumLength = usKeyPath.Length + sizeof(wchar_t);
 
 	OBJECT_ATTRIBUTES objAttr;
-	InitializeObjectAttributes(&objAttr, &usKeyPath, 0x00000040L, nullptr, nullptr);
+	InitAttribute(&objAttr, &usKeyPath, 0x00000040L, nullptr, nullptr);
 
 	HANDLE hKey = nullptr;
 
